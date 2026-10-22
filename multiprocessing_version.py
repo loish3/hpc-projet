@@ -17,26 +17,13 @@ from utils.benchmark import benchmark
 WORKERS = [1, 2, 4, 8]
 
 
-# ---------------------------------------------------------------------------
-# Process pool
-# ---------------------------------------------------------------------------
-
 def run_pool(func, items, workers: int, start_method: str | None = None) -> list:
-    """
-    Apply func to every item with a pool of processes.
-
-    chunksize=1: few but heavy tasks, so each idle process takes the next image.
-    map() returns the results in the same order as the items.
-    """
     ctx = mp.get_context(start_method)
     with ctx.Pool(processes=workers) as pool:
         return pool.map(func, items, chunksize=1)
 
 
 def pool_startup_time(workers: int, start_method: str | None = None) -> float:
-    """
-    Time to start and stop a pool that does (almost) nothing.
-    """
     ctx = mp.get_context(start_method)
     start = time.perf_counter()
     with ctx.Pool(processes=workers) as pool:
@@ -44,22 +31,12 @@ def pool_startup_time(workers: int, start_method: str | None = None) -> float:
     return time.perf_counter() - start
 
 
-# ---------------------------------------------------------------------------
-# Work done by one process on one item
-# ---------------------------------------------------------------------------
-
 def image_pipeline(vectorized: bool, threshold: float):
-    """
-    Function that processes one image from its path (load -> stats).
-    """
     func = vec.process_one_image_vec if vectorized else seq.process_one_image
     return partial(func, threshold=threshold)
 
 
 def cpu_vectorized(image, threshold: float):
-    """
-    CPU part only: the image itself is sent to the process (pickled).
-    """
     img = vec.normalize_image_vec(image)
     img = vec.mean_filter_3x3_vec(img)
     return vec.compute_image_statistics_vec(img, threshold)
@@ -69,16 +46,7 @@ def run_sequential(func, items) -> list:
     return [func(item) for item in items]
 
 
-# ---------------------------------------------------------------------------
-# Multiprocessing experiments
-# ---------------------------------------------------------------------------
-
 def karp_flatt(speedup: float, p: int) -> float:
-    """
-    Experimentally determined serial fraction (0 = perfect scaling).
-    """
-    if p == 1:
-        return 0.0
     return (1 / speedup - 1 / p) / (1 - 1 / p)
 
 
@@ -91,17 +59,12 @@ def print_scaling_table(times: dict[int, float], t_seq: float) -> None:
 
     for p, t in times.items():
         speedup = t1 / t
+        kf = karp_flatt(speedup, p) if p > 1 else 0.0
         print(f"{p:>3} | {t:>9.4f} | {speedup:>7.2f} | {speedup / p:>6.2f} "
-              f"| {karp_flatt(speedup, p):>10.3f} | {t_seq / t:>7.2f}")
+              f"| {kf:>10.3f} | {t_seq / t:>7.2f}")
 
 
 def run_experiment(label, func, items, workers, start_method, repeat=3) -> None:
-    """
-    Time func on all items without pool, then with 1, 2, 4, 8 processes.
-
-    T1 is the pool with 1 process, as in Speedup(p) = T1 / Tp.
-    The last column compares with a plain loop (no pool at all).
-    """
     print(f"\n=== {label} ===")
 
     t_seq = benchmark(run_sequential, func, items, repeat=repeat, warmup=1)["median"]
@@ -131,12 +94,8 @@ def check_results(data_dir: Path, threshold: float, workers: int,
 
 def run_experiments(data_dir: Path, threshold: float, start_method: str | None,
                     workers: list[int]) -> None:
-    """
-    A: Python loops, B: vectorized (paths sent), C: vectorized (images sent).
-    """
     paths = sorted(data_dir.glob("*.npy"))
-    workers = sorted({1, *workers})
-    method = start_method or mp.get_start_method()
+    method = mp.get_context(start_method).get_start_method()
 
     print(f"Images: {len(paths)} | logical CPUs: {os.cpu_count()} "
           f"| start method: {method}\n")
@@ -159,10 +118,6 @@ def run_experiments(data_dir: Path, threshold: float, start_method: str | None,
                    partial(cpu_vectorized, threshold=threshold), images,
                    workers, start_method, repeat=10)
 
-
-# ---------------------------------------------------------------------------
-# Main multiprocessing application
-# ---------------------------------------------------------------------------
 
 def print_summary(summary: dict[str, float], title: str, elapsed: float,
                   output_csv: Path) -> None:
@@ -188,19 +143,7 @@ def run_multiprocessing_pipeline(
     vectorized: bool,
     start_method: str | None,
 ) -> None:
-    """
-    Each process handles whole images (load -> normalize -> filter -> stats).
-    Only paths and small result dicts go through the pipes.
-    Aggregation and CSV output stay sequential, as in the baseline.
-    """
     image_paths = sorted(data_dir.glob("*.npy"))
-
-    if not image_paths:
-        raise FileNotFoundError(
-            f"No .npy files were found in '{data_dir}'.\n"
-            "Generate the demo dataset first with:\n"
-            "    python sequential_pipeline.py --generate-demo"
-        )
 
     start_time = time.perf_counter()
     results = run_pool(image_pipeline(vectorized, threshold), image_paths,
@@ -215,34 +158,20 @@ def run_multiprocessing_pipeline(
                   elapsed_time, output_csv)
 
 
-# ---------------------------------------------------------------------------
-# Command-line interface
-# ---------------------------------------------------------------------------
-
 def parse_arguments() -> argparse.Namespace:
 
     parser = argparse.ArgumentParser(
         description="Multiprocessing version of the HPC parallel-computing project."
     )
 
-    parser.add_argument("--data-dir", type=Path, default=Path("dataset"),
-                        help="Directory containing .npy image files.")
-    parser.add_argument("--output", type=Path,
-                        default=Path("multiprocessing_results.csv"),
-                        help="CSV file in which the results will be written.")
-    parser.add_argument("--threshold", type=float, default=0.65,
-                        help="Threshold used by the statistics stage.")
-    parser.add_argument("--workers", type=int, default=4,
-                        help="Number of processes used by the pipeline.")
-    parser.add_argument("--vectorized", action="store_true",
-                        help="Use the vectorized processing functions.")
-    parser.add_argument("--start-method", choices=["fork", "spawn", "forkserver"],
-                        default=None,
-                        help="How processes are created (default: platform default).")
-    parser.add_argument("--experiments", action="store_true",
-                        help="Run the scaling experiments (1, 2, 4, 8 processes) and exit.")
-    parser.add_argument("--workers-list", type=int, nargs="+", default=WORKERS,
-                        help="Numbers of processes tested by --experiments.")
+    parser.add_argument("--data-dir", type=Path, default=Path("dataset"))
+    parser.add_argument("--output", type=Path, default=Path("multiprocessing_results.csv"))
+    parser.add_argument("--threshold", type=float, default=0.65)
+    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--vectorized", action="store_true")
+    parser.add_argument("--start-method", default=None)
+    parser.add_argument("--experiments", action="store_true")
+    parser.add_argument("--workers-list", type=int, nargs="+", default=WORKERS)
 
     return parser.parse_args()
 
