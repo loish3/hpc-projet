@@ -56,12 +56,12 @@ def ExecuterSansMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
     import time
 
     if repetitions < 1:
-        print("Erreur : --repeat doit être supérieur ou égal à 1.")
+        print("Erreur : --repeat doit etre superieur ou egal a 1.")
         return
 
     chemins = sorted(dossier.glob("*.npy"))
     if not chemins:
-        print(f"Aucune image .npy trouvée dans '{dossier}'.")
+        print(f"Aucune image .npy trouvee dans '{dossier}'.")
         return
 
     temps = []
@@ -73,15 +73,15 @@ def ExecuterSansMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
     resume = seq.compute_global_summary(resultats)
     seq.save_results_to_csv(resultats, output_path=fichier_sortie)
     print("=" * 68)
-    print("Mode local (1 processus, sans mpi4py) : ce n'est pas une exécution MPI")
-    print(f"Traitement : {'vectorisé' if vectorise else 'séquentiel'}")
+    print("Mode local (1 processus, sans mpi4py) : ce n'est pas une execution MPI")
+    print(f"Traitement : {'vectorise' if vectorise else 'sequentiel'}")
     print(f"Nombre d'images : {len(chemins)}")
     print(f"Moyenne des moyennes : {resume['mean_of_means']:.8f}")
     print(f"Maximum global : {resume['global_max']:.8f}")
     print(f"Pixels au-dessus du seuil : {resume['total_above_threshold']:.0f}")
     print(f"Fraction moyenne au-dessus du seuil : {resume['average_fraction_above_threshold']:.8f}")
-    print(f"Temps local (médiane) : {statistics.median(temps):.6f} s")
-    print(f"Résultats enregistrés dans : {fichier_sortie}")
+    print(f"Temps local (mediane) : {statistics.median(temps):.6f} s")
+    print(f"Resultats enregistres dans : {fichier_sortie}")
     print("=" * 68)
 
 
@@ -96,7 +96,7 @@ def ExecuterMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
 
     if repetitions < 1:
         if rang == 0:
-            print("Erreur : --repeat doit être supérieur ou égal à 1.")
+            print("Erreur : --repeat doit etre superieur ou egal a 1.")
         return
 
     # Seul le processus 0 prépare la répartition.
@@ -112,7 +112,7 @@ def ExecuterMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
     nombre_images = communication.bcast(nombre_images, root=0)
     if nombre_images == 0:
         if rang == 0:
-            print(f"Aucune image .npy trouvée dans '{dossier}'.")
+            print(f"Aucune image .npy trouvee dans '{dossier}'.")
         return
 
     # Chaque processus reçoit uniquement sa liste de fichiers.
@@ -139,7 +139,7 @@ def ExecuterMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
                 resultats.extend(groupe)
             resultats.sort(key=lambda resultat: resultat["file"])
             if total_images != nombre_images:
-                raise RuntimeError("Nombre de résultats incorrect.")
+                raise RuntimeError("Nombre de resultats incorrect.")
             temps.append(temps_total)
 
     # Seul le processus 0 affiche et enregistre les résultats.
@@ -150,16 +150,16 @@ def ExecuterMPI(dossier, fichier_sortie, seuil, vectorise, repetitions):
 
         print("=" * 68)
         print(f"Version MPI : {nombre_processus} processus")
-        print(f"Traitement : {'vectorisé' if vectorise else 'séquentiel'}")
+        print(f"Traitement : {'vectorise' if vectorise else 'sequentiel'}")
         print(f"Nombre d'images : {nombre_images}")
         print(f"Seuil : {seuil}")
-        print(f"Répétitions : {repetitions}")
+        print(f"Repetitions : {repetitions}")
         print(f"Moyenne des moyennes : {resume['mean_of_means']:.8f}")
         print(f"Maximum global : {resume['global_max']:.8f}")
         print(f"Pixels au-dessus du seuil : {resume['total_above_threshold']:.0f}")
         print(f"Fraction moyenne au-dessus du seuil : {resume['average_fraction_above_threshold']:.8f}")
-        print(f"Temps MPI (médiane) : {temps_median:.6f} s")
-        print(f"Résultats enregistrés dans : {fichier_sortie}")
+        print(f"Temps MPI (mediane) : {temps_median:.6f} s")
+        print(f"Resultats enregistres dans : {fichier_sortie}")
         print("=" * 68)
 
 
